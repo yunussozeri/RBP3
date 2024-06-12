@@ -7,18 +7,22 @@ import java.util.HashMap;
 import java.util.Map;
 
 class HttpHandler extends Thread {
-    private Socket socket;
+    InputStream input;
+    OutputStream output;
+    private final BufferedReader reader;
+    private final PrintWriter writer;
 
-    public HttpHandler(Socket socket) {
-        this.socket = socket;
+
+    public HttpHandler(Socket socket) throws IOException {
+        input = socket.getInputStream();
+        output = socket.getOutputStream();
+        reader = new BufferedReader(new InputStreamReader(input));
+        writer = new PrintWriter(output, true);
     }
 
     @Override
     public void run() {
-        try (InputStream input = socket.getInputStream();
-             OutputStream output = socket.getOutputStream();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-             PrintWriter writer = new PrintWriter(output, true)) {
+        try {
 
             // Lese die Request-Zeile
             String requestLine = reader.readLine();
@@ -55,11 +59,12 @@ class HttpHandler extends Thread {
             }
 
             String filePath = requestParts[1];
-            switch(filePath){
+            switch (filePath) {
                 case "/" -> filePath = "/index.html";
                 case "/date" -> sendDateResponse(writer);
                 case "/time" -> sendTimeResponse(writer);
-                case "/yunus" -> sendYunusResponse(writer,"yunuske");
+                case "/yunus" -> sendYunusResponse(writer, "yunuske");
+                //default -> sendErrorResponse(writer,404,"Not Found");
             }
 
             filePath = "Testweb" + filePath;
@@ -103,12 +108,16 @@ class HttpHandler extends Thread {
     }
 
     private String getContentType(String filePath) {
-        if (filePath.endsWith(".html")) return "text/html";
-        if (filePath.endsWith(".jpg")) return "image/jpeg";
-        if (filePath.endsWith(".gif")) return "image/gif";
-        if (filePath.endsWith(".pdf")) return "application/pdf";
-        if (filePath.endsWith(".ico")) return "image/x-icon";
-        return "application/octet-stream";
+
+        String extension = filePath.substring(filePath.lastIndexOf("."));
+        return switch (extension) {
+            case ".html" -> "text/html";
+            case ".jpg" -> "image/jpeg";
+            case ".gif" -> "image/gif";
+            case ".pdf" -> "application/pdf";
+            case ".ico" -> "image/x-icon";
+            default -> "application/octet-stream";
+        };
     }
 
     private void sendTimeResponse(PrintWriter writer) {

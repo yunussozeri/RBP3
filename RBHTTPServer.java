@@ -14,7 +14,11 @@ import java.net.*;
 import java.util.concurrent.*;
 
 
-public class TCPServer {
+
+public class RBHTTPServer {
+   public static final String HTTP_VERSION = "HTTP/1.0";
+
+   public static int PORT = 8080;
    /* TCP-Server, der Verbindungsanfragen entgegennimmt */
 
    /* Semaphore begrenzt die Anzahl parallel laufender Worker-Threads  */
@@ -27,7 +31,7 @@ public class TCPServer {
    public boolean serviceRequested = true;
 		 
    /* Konstruktor mit Parametern: Server-Port, Maximale Anzahl paralleler Worker-Threads*/
-   public TCPServer(int serverPort, int maxThreads) {
+   public RBHTTPServer(int serverPort, int maxThreads) {
       this.serverPort = serverPort;
       this.workerThreadsSem = new Semaphore(maxThreads);
    }
@@ -54,7 +58,7 @@ public class TCPServer {
             connectionSocket = welcomeSocket.accept();
 
             /* Neuen Arbeits-Thread erzeugen und die Nummer, den Socket sowie das Serverobjekt uebergeben */
-            (new TCPWorkerThread(nextThreadNumber++, connectionSocket, this)).start();
+            (new HttpHandler( connectionSocket)).start();
           }
       } catch (Exception e) {
          System.err.println(e.toString());
@@ -63,7 +67,7 @@ public class TCPServer {
 
    public static void main(String[] args) {
       /* Erzeuge Server und starte ihn */
-      TCPServer myServer = new TCPServer(60000, 2); 
+      RBHTTPServer myServer = new RBHTTPServer(PORT, 100);
       myServer.startServer();
    }
 }
