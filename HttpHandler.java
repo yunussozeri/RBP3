@@ -10,14 +10,15 @@ class HttpHandler extends Thread {
     InputStream input;
     OutputStream output;
     private final BufferedReader reader;
-    private final PrintWriter writer;
-
+    private DataOutputStream outToClient;
+    private final String CRLF = "\r\n" ;
+    FileInputStream fInput;
 
     public HttpHandler(Socket socket) throws IOException {
         input = socket.getInputStream();
         output = socket.getOutputStream();
         reader = new BufferedReader(new InputStreamReader(input));
-        writer = new PrintWriter(output, true);
+        outToClient =  new DataOutputStream(output);
     }
 
     @Override
@@ -26,8 +27,9 @@ class HttpHandler extends Thread {
 
             // Lese die Request-Zeile
             String requestLine = reader.readLine();
+            System.err.println(requestLine);
             if (requestLine == null || !requestLine.startsWith("GET")) {
-                sendErrorResponse(writer, 400, "Bad Request");
+                sendErrorResponse(400, "Bad Request");
                 return;
             }
 
@@ -42,28 +44,28 @@ class HttpHandler extends Thread {
             }
 
             // Protokolliere die Header-Felder
-            headers.forEach((key, value) -> System.out.println(key + ": " + value));
+            headers.forEach((key, value) -> System.err.println(key + ": " + value));
 
             // Überprüfe den User-Agent
             String userAgent = headers.get("User-Agent");
             if (userAgent == null || !userAgent.contains("Firefox")) {
-                sendErrorResponse(writer, 406, "Not Acceptable");
+                sendErrorResponse(406, "Not Acceptable");
                 return;
             }
 
             // Verarbeite den Pfad der angeforderten Ressource
             String[] requestParts = requestLine.split(" ");
             if (requestParts.length < 2) {
-                sendErrorResponse(writer, 400, "Bad Request");
+                sendErrorResponse(400, "Bad Request");
                 return;
             }
 
             String filePath = requestParts[1];
             switch (filePath) {
                 case "/" -> filePath = "/index.html";
-                case "/date" -> sendDateResponse(writer);
-                case "/time" -> sendTimeResponse(writer);
-                case "/yunus" -> sendYunusResponse(writer, "yunuske");
+                case "/date" -> sendDateResponse();
+                case "/time" -> sendTimeResponse();
+                case "/yunus" -> sendYunusResponse("yunuske");
                 //default -> sendErrorResponse(writer,404,"Not Found");
             }
 
@@ -71,40 +73,44 @@ class HttpHandler extends Thread {
 
             File file = new File(filePath);
             if (!file.exists()) {
-                sendErrorResponse(writer, 404, "Not Found");
+                sendErrorResponse(404, "Not Found");
                 return;
             }
 
             // Bestimme den Content-Type
             String contentType = getContentType(filePath);
-
+            writeToClient("HTTP/1.0 200 OK");
+            writeToClient("Content-Type: " + contentType);
+            writeToClient("Content-Length: " + file.length());
+            writeToClient("");
+            fInput = new FileInputStream(filePath);
             // Sende die Antwort
-            byte[] fileContent = Files.readAllBytes(file.toPath());
-            writer.println("HTTP/1.0 200 OK");
-            writer.println("Content-Type: " + contentType);
-            writer.println("Content-Length: " + fileContent.length);
-            writer.println();
-            output.write(fileContent);
+            byte[] fileContent = new byte[4096];
+            int len;
+            while ((len = fInput.read(fileContent)) > 0) {
+                output.write(fileContent, 0, len);
+            }
+           // byte[] fileContent = Files.readAllBytes(file.toPath()); //readAllBytes problematisch, da Dateien zu groß werden z.B. Viedeo mit 30gb
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void sendYunusResponse(PrintWriter writer, String response) {
+    private void sendYunusResponse(String response) throws IOException {
 
-        writer.println("HTTP/1.0 200 OK");
-        writer.println("Content-Type: text/plain");
-        writer.println("Content-Length: " + response.length());
-        writer.println();
-        writer.println(response);
+        writeToClient("HTTP/1.0 200 OK");
+        writeToClient("Content-Type: text/plain");
+        writeToClient("Content-Length: " + response.length());
+        writeToClient("");
+        writeToClient(response);
     }
 
-    private void sendErrorResponse(PrintWriter writer, int statusCode, String message) {
-        writer.println("HTTP/1.0 " + statusCode + " " + message);
-        writer.println("Content-Type: text/html");
-        writer.println();
-        writer.println("<html><body><h1>" + statusCode + " " + message + "</h1></body></html>");
+    private void sendErrorResponse(int statusCode, String message) throws IOException {
+        writeToClient("HTTP/1.0 " + statusCode + " " + message);
+        writeToClient("Content-Type: text/html");
+        writeToClient("");
+        writeToClient("<html><body><h1>" + statusCode + " " + message + "</h1></body></html>");
     }
 
     private String getContentType(String filePath) {
@@ -120,21 +126,28 @@ class HttpHandler extends Thread {
         };
     }
 
-    private void sendTimeResponse(PrintWriter writer) {
+    private void sendTimeResponse() throws IOException {
         String time = new SimpleDateFormat("HH:mm:ss").format(new Date());
-        writer.println("HTTP/1.0 200 OK");
-        writer.println("Content-Type: text/plain");
-        writer.println("Content-Length: " + time.length());
-        writer.println();
-        writer.println(time);
+        writeToClient("HTTP/1.0 200 OK");
+        writeToClient("Content-Type: text/plain");
+        writeToClient("Content-Length: " + time.length());
+        writeToClient("");
+        writeToClient(time);
     }
 
-    private void sendDateResponse(PrintWriter writer) {
+    private void sendDateResponse() throws IOException {
         String date = new SimpleDateFormat("dd.MM.yyyy").format(new Date());
-        writer.println("HTTP/1.0 200 OK");
-        writer.println("Content-Type: text/plain");
-        writer.println("Content-Length: " + date.length());
-        writer.println();
-        writer.println(date);
+        writeToClient("HTTP/1.0 200 OK");
+        writeToClient("Content-Type: text/plain");
+        writeToClient("Content-Length: " + date.length());
+        writeToClient("");
+        writeToClient(date);
+    }
+
+    private void writeToClient(String line) throws IOException {
+        /* Sende eine Antwortzeile zum Client
+         * ALLE Antworten an den Client müssen über diese Methode gesendet werden ("Sub-Layer") */
+        outToClient.write((line + CRLF).getBytes());
+        System.err.println("WebServer " + this.getName() + " has written the message: " + line);
     }
 }
